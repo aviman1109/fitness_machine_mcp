@@ -1,0 +1,237 @@
+"""Treadmill MCP server — BLE control + workout tracking."""
+from __future__ import annotations
+import asyncio, logging, os, sys
+from typing import Optional
+
+from mcp.server.fastmcp import FastMCP
+from mcp.server.transport_security import TransportSecuritySettings
+from pydantic import BaseModel
+import uvicorn
+
+from fitness_machine_mcp.engine import WorkoutEngine
+from fitness_machine_mcp.otel import setup_otel
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s  %(levelname)-8s  %(name)s  %(message)s",
+    stream=sys.stdout,
+)
+log = logging.getLogger("fitness_machine.server")
+
+# ── Globals ───────────────────────────────────────────────────────────────────
+
+engine = WorkoutEngine()
+
+# ── FastMCP setup ─────────────────────────────────────────────────────────────
+
+SERVER_INSTRUCTIONS = """
+This MCP server controls BLE FTMS fitness machines (treadmill + cycling trainer) and uploads completed workouts to Garmin Connect.
+For running: list_workouts, start_workout, get_status, stop_workout, set_speed, set_incline.
+For cycling ERG: create_workout (sport=cycling, steps with power_w), start_workout, get_status, set_target_power.
+After completion the activity is auto-uploaded to Garmin Connect.
+""".strip()
+
+app = FastMCP(name="Fitness Machine MCP", instructions=SERVER_INSTRUCTIONS)
+
+_allowed_hosts  = os.environ.get("MCP_ALLOWED_HOSTS",  "127.0.0.1:*,localhost:*")
+_allowed_origins = os.environ.get("MCP_ALLOWED_ORIGINS", "http://127.0.0.1:*,http://localhost:*")
+app.settings.transport_security = TransportSecuritySettings(
+    enable_dns_rebinding_protection=True,
+    allowed_hosts=[h.strip() for h in _allowed_hosts.split(",")],
+    allowed_origins=[o.strip() for o in _allowed_origins.split(",")],
+)
+app.settings.stateless_http = True
+app.settings.json_response  = True
+app.settings.streamable_http_path = os.environ.get("MCP_PATH", "/mcp")
+
+# ── Schemas ───────────────────────────────────────────────────────────────────
+
+class WorkoutStep(BaseModel):
+    name: str
+    duration_secs: int
+    speed_kmh: Optional[float] = None   # running steps
+    power_w: Optional[int] = None       # cycling ERG steps
+
+
+# ── MCP Tools ─────────────────────────────────────────────────────────────────
+
+@app.tool(
+    description="List available treadmill workout plans.",
+    annotations={"readOnlyHint": True, "idempotentHint": True},
+)
+def list_workouts() -> list[dict]:
+    return engine.list_workouts()
+
+
+@app.tool(
+    description="Get full details of a workout plan by ID.",
+    annotations={"readOnlyHint": True, "idempotentHint": True},
+)
+def get_workout(workout_id: str) -> dict:
+    plan = engine.get_workout(workout_id)
+    if plan is None:
+        return {"error": f"Workout not found: {workout_id}"}
+    return plan
+
+
+@app.tool(
+    description=(
+        "Create or update a workout plan. "
+        "For running steps: name, duration_secs, speed_kmh. "
+        "For cycling steps: name, duration_secs, power_w. "
+        "incline_pct applies to running only (default 1.0%). "
+        "sport: 'running' (default) or 'cycling'. "
+        "Running example: [{\"name\":\"暖身\",\"duration_secs\":300,\"speed_kmh\":9.0}] "
+        "Cycling example: [{\"name\":\"暖身\",\"duration_secs\":1200,\"power_w\":140}]"
+    ),
+)
+def create_workout(
+    workout_id: str,
+    name: str,
+    steps: list[WorkoutStep],
+    description: str = "",
+    incline_pct: float = 1.0,
+    sport: str = "running",
+) -> dict:
+    """Create or overwrite a workout plan. workout_id becomes the filename (no spaces)."""
+    if not workout_id or not workout_id.replace("_", "").replace("-", "").isalnum():
+        return {"ok": False, "error": "workout_id must be alphanumeric with _ or -"}
+    if not steps:
+        return {"ok": False, "error": "steps cannot be empty"}
+    if not (0.0 <= incline_pct <= 15.0):
+        return {"ok": False, "error": "incline_pct must be 0–15 %"}
+    sport_lower = sport.lower()
+    if sport_lower not in ("running", "cycling"):
+        return {"ok": False, "error": "sport must be 'running' or 'cycling'"}
+    for s in steps:
+        if s.duration_secs <= 0 or s.duration_secs > 14400:
+            return {"ok": False, "error": f"Step '{s.name}': duration_secs must be 1–14400"}
+    if sport_lower == "cycling":
+        for s in steps:
+            if s.power_w is None:
+                return {"ok": False, "error": f"Cycling step '{s.name}' missing power_w"}
+            if not (0 <= s.power_w <= 2000):
+                return {"ok": False, "error": f"Cycling step '{s.name}': power_w must be 0–2000 W"}
+    else:
+        for s in steps:
+            if s.speed_kmh is None:
+                return {"ok": False, "error": f"Running step '{s.name}' missing speed_kmh"}
+            if not (0.5 <= s.speed_kmh <= 20.0):
+                return {"ok": False, "error": f"Running step '{s.name}': speed_kmh must be 0.5–20 km/h"}
+    plan = {
+        "name": name,
+        "description": description,
+        "sport": sport_lower,
+        "incline_pct": incline_pct,
+        "steps": [s.model_dump(exclude_none=True) for s in steps],
+    }
+    engine.save_workout(workout_id, plan)
+    total = sum(s.duration_secs for s in steps)
+    return {"ok": True, "workout_id": workout_id, "sport": sport_lower,
+            "steps": len(steps), "total_secs": total}
+
+
+@app.tool(description="Delete a workout plan by ID. Cannot delete while workout is running.")
+def delete_workout(workout_id: str) -> dict:
+    if engine.state.status in ("running", "connecting") and engine.state.workout_name:
+        return {"ok": False, "error": "Cannot delete while a workout is active"}
+    deleted = engine.delete_workout(workout_id)
+    return {"ok": deleted, "deleted": workout_id if deleted else None,
+            "error": None if deleted else f"Workout not found: {workout_id}"}
+
+
+@app.tool(description="Start a workout by ID. For treadmill: insert safety key first. For cycling: just start pedaling.")
+async def start_workout(workout_id: str) -> dict:
+    """Start a workout. Returns status dict."""
+    state = engine.state
+    if state.status in ("running", "connecting", "ready"):
+        return {"ok": False, "error": f"Workout already active: {state.workout_name}"}
+    plan = engine.get_workout(workout_id)
+    if plan is None:
+        return {"ok": False, "error": f"Workout not found: {workout_id}"}
+    ok = engine.start(workout_id)
+    if not ok:
+        return {"ok": False, "error": "Could not start workout (check status)"}
+    sport = plan.get("sport", "running")
+    if sport == "cycling":
+        return {"ok": True, "started": workout_id, "message": "訓練台 ERG 課表開始，開始踩踏"}
+    return {"ok": True, "started": workout_id, "message": "插好安全鑰匙，課表開始執行"}
+
+
+@app.tool(
+    description="Get current treadmill workout status.",
+    annotations={"readOnlyHint": True, "idempotentHint": True},
+)
+def get_status() -> dict:
+    s = engine.state
+    base = {
+        "status":        s.status,
+        "sport":         s.sport,
+        "workout":       s.workout_name,
+        "step":          f"{s.step_name} ({s.step_index+1}/{s.step_total})" if s.step_total else "",
+        "elapsed_sec":   s.elapsed_sec,
+        "remaining_sec": s.remaining_sec,
+        "hr_bpm":        s.hr_bpm,
+        "rr_latest_ms":  s.rr_latest_ms,   # latest RR interval (ms); 0 if HRM not connected
+        "distance_m":    round(s.distance_m, 1),
+        "garmin_activity_id": s.garmin_activity_id,
+        "error":         s.error,
+    }
+    if s.sport == "cycling":
+        base["power_w"]         = s.power_w          # trainer ERG reported power
+        base["power_w_pm"]      = s.power_w_pm       # pedal power meter (0 if not connected)
+        base["target_power_w"]  = s.target_power_w
+        base["cadence_rpm"]     = s.cadence_rpm      # trainer internal
+        base["cadence_rpm_pm"]  = s.cadence_rpm_pm   # pedal power meter (preferred)
+        base["cadence_rpm_csc"] = s.cadence_rpm_csc  # HRM-Pro+ CSC (fallback)
+        base["speed_kmh"]       = round(s.speed_kmh, 1)
+    else:
+        base["speed_kmh"]       = round(s.speed_kmh, 1)
+        base["incline_pct"]     = round(s.incline_pct, 1)
+        base["cadence_spm"]     = s.cadence_spm
+    return base
+
+
+@app.tool(description="Emergency stop — disconnects all BLE devices and halts the active workout.")
+async def stop_workout() -> dict:
+    await engine.emergency_stop()
+    return {"stopped": True}
+
+
+@app.tool(description="Directly set trainer ERG target power (watts). Trainer must be running.")
+async def set_target_power(power_w: int) -> dict:
+    """Set trainer ERG power directly. Range: 0–2000W."""
+    if power_w < 0 or power_w > 2000:
+        return {"ok": False, "error": "Power must be 0–2000W"}
+    try:
+        ok = await engine.set_target_power(power_w)
+        return {"ok": ok, "power_w": power_w}
+    except RuntimeError as e:
+        return {"ok": False, "error": str(e)}
+
+
+# ── Entry point ───────────────────────────────────────────────────────────────
+
+def main() -> None:
+    setup_otel()
+
+    host      = os.environ.get("MCP_HOST", "0.0.0.0")
+    port      = int(os.environ.get("PORT", "38097"))
+    transport = os.environ.get("MCP_TRANSPORT", "http").lower()
+
+    log.info("Fitness Machine MCP starting — transport=%s port=%d", transport, port)
+
+    if transport == "stdio":
+        app.run()
+        return
+
+    if transport in {"http", "streamable-http"}:
+        http_app = app.streamable_http_app()
+        uvicorn.run(http_app, host=host, port=port, log_config=None)
+        return
+
+    raise ValueError(f"Unsupported transport '{transport}'")
+
+
+if __name__ == "__main__":
+    main()

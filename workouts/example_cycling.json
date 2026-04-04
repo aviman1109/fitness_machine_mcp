@@ -1,0 +1,10 @@
+{
+  "name": "Example Cycling 45min",
+  "description": "Sample ERG workout: warm-up → tempo → cool-down. Adjust power_w to your FTP.",
+  "sport": "cycling",
+  "steps": [
+    {"name": "Warm-up",   "duration_secs": 600,  "power_w": 120},
+    {"name": "Tempo",     "duration_secs": 1800, "power_w": 200},
+    {"name": "Cool-down", "duration_secs": 600,  "power_w": 100}
+  ]
+}

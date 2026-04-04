@@ -1,0 +1,31 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "fitness-machine-mcp"
+version = "0.2.0"
+description = "BLE FTMS fitness machine controller — treadmill + cycling trainer ERG — as an MCP server"
+readme = "README.md"
+requires-python = ">=3.12"
+license = {text = "MIT"}
+keywords = ["mcp", "ble", "ftms", "treadmill", "cycling", "garmin", "fitness"]
+dependencies = [
+    "mcp>=1.23.0",
+    "fastapi>=0.115.0",
+    "uvicorn>=0.30.0",
+    "bleak>=0.22.0",
+    "opentelemetry-api>=1.25.0",
+    "opentelemetry-sdk>=1.25.0",
+    "opentelemetry-exporter-otlp-proto-http>=1.25.0",
+    "opentelemetry-instrumentation-fastapi>=0.46b0",
+    "garminconnect>=0.2.22",
+    "garth>=0.4.46",
+    "python-dotenv>=1.0.0",
+]
+
+[project.scripts]
+fitness-machine-mcp = "fitness_machine_mcp.server:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/fitness_machine_mcp"]

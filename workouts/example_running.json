@@ -1,0 +1,11 @@
+{
+  "name": "Example Run 30min",
+  "description": "Sample running workout: warm-up → steady → cool-down.",
+  "sport": "running",
+  "incline_pct": 1.0,
+  "steps": [
+    {"name": "Warm-up",   "duration_secs": 300,  "speed_kmh": 8.0},
+    {"name": "Steady",    "duration_secs": 1500, "speed_kmh": 10.5},
+    {"name": "Cool-down", "duration_secs": 300,  "speed_kmh": 7.0}
+  ]
+}
