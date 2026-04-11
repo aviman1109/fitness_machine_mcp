@@ -1,0 +1,23 @@
+{
+  "name": "Z2 長跑 80min（4/5）",
+  "description": "連假第3天。Z2 有氧，HR 130-145，不追配速。暖身→主課→緩和。",
+  "sport": "running",
+  "incline_pct": 1.0,
+  "steps": [
+    {
+      "name": "暖身",
+      "duration_secs": 600,
+      "speed_kmh": 8.0
+    },
+    {
+      "name": "Z2 主課",
+      "duration_secs": 4200,
+      "speed_kmh": 9.5
+    },
+    {
+      "name": "緩和",
+      "duration_secs": 600,
+      "speed_kmh": 7.5
+    }
+  ]
+}

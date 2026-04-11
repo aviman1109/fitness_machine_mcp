@@ -1,0 +1,34 @@
+{
+  "treadmill": {
+    "role": "treadmill",
+    "addr": "AA:BB:CC:DD:EE:01",
+    "name": "My Treadmill",
+    "capabilities": [],
+    "bilateral": null,
+    "paired_at": "2024-01-01T00:00:00"
+  },
+  "trainer": {
+    "role": "trainer",
+    "addr": "AA:BB:CC:DD:EE:02",
+    "name": "My ERG Trainer",
+    "capabilities": [],
+    "bilateral": null,
+    "paired_at": "2024-01-01T00:00:00"
+  },
+  "hrm": {
+    "role": "hrm",
+    "addr": "AA:BB:CC:DD:EE:03",
+    "name": "Garmin HRM-Pro+",
+    "capabilities": [],
+    "bilateral": null,
+    "paired_at": "2024-01-01T00:00:00"
+  },
+  "power_meter": {
+    "role": "power_meter",
+    "addr": "AA:BB:CC:DD:EE:04",
+    "name": "Favero Assioma Duo",
+    "capabilities": [],
+    "bilateral": true,
+    "paired_at": "2024-01-01T00:00:00"
+  }
+}

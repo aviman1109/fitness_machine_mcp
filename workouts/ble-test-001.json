@@ -1,0 +1,27 @@
+{
+  "name": "BLE連線測試",
+  "description": "",
+  "sport": "cycling",
+  "steps": [
+    {
+      "name": "暖身",
+      "duration_secs": 120,
+      "power_w": 100
+    },
+    {
+      "name": "測試區間",
+      "duration_secs": 60,
+      "power_w": 180
+    },
+    {
+      "name": "恢復",
+      "duration_secs": 60,
+      "power_w": 80
+    },
+    {
+      "name": "緩和",
+      "duration_secs": 120,
+      "power_w": 90
+    }
+  ]
+}

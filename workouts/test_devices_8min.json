@@ -1,0 +1,28 @@
+{
+  "name": "裝置測試 5min",
+  "description": "裝置連線測試：踏板+訓練台+心率帶",
+  "sport": "cycling",
+  "incline_pct": 1.0,
+  "steps": [
+    {
+      "name": "暖身 80W",
+      "duration_secs": 60,
+      "power_w": 80
+    },
+    {
+      "name": "中強度 100W",
+      "duration_secs": 120,
+      "power_w": 100
+    },
+    {
+      "name": "閾值 120W",
+      "duration_secs": 120,
+      "power_w": 120
+    },
+    {
+      "name": "收操 80W",
+      "duration_secs": 60,
+      "power_w": 80
+    }
+  ]
+}

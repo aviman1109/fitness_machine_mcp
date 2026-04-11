@@ -1,0 +1,27 @@
+{
+  "name": "Z2 有氧騎 90min（4/11）",
+  "description": "重啟期第二天。RHR偏高，保守暖身。Z2鎖150W，心率守住150以下。",
+  "sport": "cycling",
+  "steps": [
+    {
+      "name": "暖身",
+      "duration_secs": 600,
+      "power_w": 130
+    },
+    {
+      "name": "Z2 導入",
+      "duration_secs": 300,
+      "power_w": 145
+    },
+    {
+      "name": "Z2 主課",
+      "duration_secs": 3900,
+      "power_w": 150
+    },
+    {
+      "name": "緩和",
+      "duration_secs": 600,
+      "power_w": 100
+    }
+  ]
+}

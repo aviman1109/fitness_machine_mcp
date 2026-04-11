@@ -3,9 +3,11 @@ FROM python:3.12-slim
 WORKDIR /app
 
 # bluez + dbus needed for BLE via bleak inside Docker
+# libusb1-dev needed for ANT+ via openant
 RUN apt-get update && apt-get install -y --no-install-recommends \
         bluez \
         dbus \
+        libusb-1.0-0 \
     && rm -rf /var/lib/apt/lists/*
 
 ENV PYTHONUNBUFFERED=1 \

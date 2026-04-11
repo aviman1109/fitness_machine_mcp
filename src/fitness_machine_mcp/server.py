@@ -1,6 +1,9 @@
 """Treadmill MCP server — BLE control + workout tracking."""
 from __future__ import annotations
-import asyncio, logging, os, sys
+import asyncio
+import logging
+import os
+import sys
 from typing import Optional
 
 from mcp.server.fastmcp import FastMCP
@@ -10,9 +13,11 @@ import uvicorn
 
 from fitness_machine_mcp.engine import WorkoutEngine
 from fitness_machine_mcp.otel import setup_otel
+from fitness_machine_mcp.devices import registry, scan_devices as _scan_devices, VALID_ROLES
 
+_LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO").upper()
 logging.basicConfig(
-    level=logging.INFO,
+    level=getattr(logging, _LOG_LEVEL, logging.INFO),
     format="%(asctime)s  %(levelname)-8s  %(name)s  %(message)s",
     stream=sys.stdout,
 )
@@ -26,8 +31,18 @@ engine = WorkoutEngine()
 
 SERVER_INSTRUCTIONS = """
 This MCP server controls BLE FTMS fitness machines (treadmill + cycling trainer) and uploads completed workouts to Garmin Connect.
-For running: list_workouts, start_workout, get_status, stop_workout, set_speed, set_incline.
-For cycling ERG: create_workout (sport=cycling, steps with power_w), start_workout, get_status, set_target_power.
+
+## Running (treadmill)
+The treadmill does NOT support speed control — start_workout only opens a timed session.
+Training structure (intervals, pace targets, coaching cues) is managed by the agent in the conversation session, NOT stored in workout steps.
+Use start_workout to begin recording, get_status to monitor HR/speed/distance, stop_workout when done.
+Do NOT use create_workout for running — it is unnecessary and misleading.
+
+## Cycling (ERG trainer)
+create_workout (sport=cycling, steps with power_w) defines the ERG power targets.
+start_workout executes the ERG plan automatically. set_target_power for live overrides.
+
+## Both sports
 After completion the activity is auto-uploaded to Garmin Connect.
 """.strip()
 
@@ -76,12 +91,12 @@ def get_workout(workout_id: str) -> dict:
 
 @app.tool(
     description=(
-        "Create or update a workout plan. "
-        "For running steps: name, duration_secs, speed_kmh. "
-        "For cycling steps: name, duration_secs, power_w. "
-        "incline_pct applies to running only (default 1.0%). "
-        "sport: 'running' (default) or 'cycling'. "
-        "Running example: [{\"name\":\"暖身\",\"duration_secs\":300,\"speed_kmh\":9.0}] "
+        "Create or update a cycling ERG workout plan. "
+        "For cycling ERG steps: name, duration_secs, power_w. "
+        "sport must be 'cycling'. "
+        "DO NOT use this for running — the treadmill does not support speed control. "
+        "Running sessions are started with start_workout using a pre-existing run session ID; "
+        "training structure is managed by the agent in the conversation, not stored here. "
         "Cycling example: [{\"name\":\"暖身\",\"duration_secs\":1200,\"power_w\":140}]"
     ),
 )
@@ -90,44 +105,32 @@ def create_workout(
     name: str,
     steps: list[WorkoutStep],
     description: str = "",
-    incline_pct: float = 1.0,
-    sport: str = "running",
+    sport: str = "cycling",
 ) -> dict:
-    """Create or overwrite a workout plan. workout_id becomes the filename (no spaces)."""
+    """Create or overwrite a cycling ERG workout plan. workout_id becomes the filename (no spaces)."""
     if not workout_id or not workout_id.replace("_", "").replace("-", "").isalnum():
         return {"ok": False, "error": "workout_id must be alphanumeric with _ or -"}
     if not steps:
         return {"ok": False, "error": "steps cannot be empty"}
-    if not (0.0 <= incline_pct <= 15.0):
-        return {"ok": False, "error": "incline_pct must be 0–15 %"}
     sport_lower = sport.lower()
-    if sport_lower not in ("running", "cycling"):
-        return {"ok": False, "error": "sport must be 'running' or 'cycling'"}
+    if sport_lower != "cycling":
+        return {"ok": False, "error": "create_workout is for cycling ERG only. For running, use start_workout with an existing session ID — training content is managed by the agent in session."}
     for s in steps:
         if s.duration_secs <= 0 or s.duration_secs > 14400:
             return {"ok": False, "error": f"Step '{s.name}': duration_secs must be 1–14400"}
-    if sport_lower == "cycling":
-        for s in steps:
-            if s.power_w is None:
-                return {"ok": False, "error": f"Cycling step '{s.name}' missing power_w"}
-            if not (0 <= s.power_w <= 2000):
-                return {"ok": False, "error": f"Cycling step '{s.name}': power_w must be 0–2000 W"}
-    else:
-        for s in steps:
-            if s.speed_kmh is None:
-                return {"ok": False, "error": f"Running step '{s.name}' missing speed_kmh"}
-            if not (0.5 <= s.speed_kmh <= 20.0):
-                return {"ok": False, "error": f"Running step '{s.name}': speed_kmh must be 0.5–20 km/h"}
+        if s.power_w is None:
+            return {"ok": False, "error": f"Cycling step '{s.name}' missing power_w"}
+        if not (0 <= s.power_w <= 2000):
+            return {"ok": False, "error": f"Cycling step '{s.name}': power_w must be 0–2000 W"}
     plan = {
         "name": name,
         "description": description,
-        "sport": sport_lower,
-        "incline_pct": incline_pct,
+        "sport": "cycling",
         "steps": [s.model_dump(exclude_none=True) for s in steps],
     }
     engine.save_workout(workout_id, plan)
     total = sum(s.duration_secs for s in steps)
-    return {"ok": True, "workout_id": workout_id, "sport": sport_lower,
+    return {"ok": True, "workout_id": workout_id, "sport": "cycling",
             "steps": len(steps), "total_secs": total}
 
 
@@ -178,24 +181,39 @@ def get_status() -> dict:
         "error":         s.error,
     }
     if s.sport == "cycling":
-        base["power_w"]         = s.power_w          # trainer ERG reported power
-        base["power_w_pm"]      = s.power_w_pm       # pedal power meter (0 if not connected)
-        base["target_power_w"]  = s.target_power_w
-        base["cadence_rpm"]     = s.cadence_rpm      # trainer internal
-        base["cadence_rpm_pm"]  = s.cadence_rpm_pm   # pedal power meter (preferred)
-        base["cadence_rpm_csc"] = s.cadence_rpm_csc  # HRM-Pro+ CSC (fallback)
-        base["speed_kmh"]       = round(s.speed_kmh, 1)
+        base["power_w"]           = s.power_w
+        base["power_w_pm"]        = s.power_w_pm
+        base["target_power_w"]    = s.target_power_w
+        base["cadence_rpm"]       = s.cadence_rpm
+        base["cadence_rpm_pm"]    = s.cadence_rpm_pm
+        base["cadence_rpm_csc"]   = s.cadence_rpm_csc
+        base["speed_kmh"]         = round(s.speed_kmh, 1)
+        base["pedal_balance_pct"] = s.pedal_balance_pct   # left % (0.0 if not reported)
+        base["ant_active"]        = s.ant_active
+        if s.torque_eff_l or s.torque_eff_r:
+            base["torque_eff_l"]    = s.torque_eff_l
+            base["torque_eff_r"]    = s.torque_eff_r
+        if s.pedal_smooth_l or s.pedal_smooth_r:
+            base["pedal_smooth_l"]  = s.pedal_smooth_l
+            base["pedal_smooth_r"]  = s.pedal_smooth_r
     else:
         base["speed_kmh"]       = round(s.speed_kmh, 1)
         base["incline_pct"]     = round(s.incline_pct, 1)
         base["cadence_spm"]     = s.cadence_spm
+        base["stride_len_m"]    = round(s.stride_len_m, 3) if s.stride_len_m else 0.0
+        base["ant_active"]      = s.ant_active
     return base
 
 
-@app.tool(description="Emergency stop — disconnects all BLE devices and halts the active workout.")
+@app.tool(description="Stop the active workout, upload collected data to Garmin Connect, and disconnect all BLE devices. Safe to call at any time — uploads whatever data was recorded so far.")
 async def stop_workout() -> dict:
     await engine.emergency_stop()
-    return {"stopped": True}
+    garmin_id = engine.state.garmin_activity_id
+    return {
+        "stopped": True,
+        "garmin_activity_id": garmin_id,
+        "uploaded": garmin_id is not None,
+    }
 
 
 @app.tool(description="Directly set trainer ERG target power (watts). Trainer must be running.")
@@ -208,6 +226,59 @@ async def set_target_power(power_w: int) -> dict:
         return {"ok": ok, "power_w": power_w}
     except RuntimeError as e:
         return {"ok": False, "error": str(e)}
+
+
+# ── Device management tools ───────────────────────────────────────────────────
+
+@app.tool(
+    description=(
+        "Scan for nearby BLE fitness devices and identify their capabilities. "
+        "Returns devices with suggested roles (trainer/treadmill/hrm/power_meter). "
+        "Use pair_device() afterwards to assign a device to a role."
+    ),
+    annotations={"readOnlyHint": True},
+)
+async def scan_devices(timeout_secs: int = 12) -> list[dict]:
+    """Scan BLE and return identifiable fitness devices sorted by signal strength."""
+    return await _scan_devices(timeout=float(timeout_secs))
+
+
+@app.tool(
+    description=(
+        "Pair a BLE device to a role and save it persistently. "
+        "Roles: trainer, treadmill, hrm, power_meter. "
+        "addr is the BLE MAC address from scan_devices(). "
+        "name is optional display label."
+    ),
+)
+def pair_device(role: str, addr: str, name: str = "") -> dict:
+    """Assign a BLE device address to a role. Persists across restarts."""
+    if role not in VALID_ROLES:
+        return {"ok": False, "error": f"Unknown role '{role}'. Valid: {sorted(VALID_ROLES)}"}
+    if not addr:
+        return {"ok": False, "error": "addr is required"}
+    try:
+        registry.assign(role, addr.upper(), name)
+        return {"ok": True, "role": role, "addr": addr.upper(), "name": name or addr}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.tool(description="Remove a device pairing by role (trainer/treadmill/hrm/power_meter).")
+def unpair_device(role: str) -> dict:
+    """Remove a device assignment. The device will not be connected in future workouts."""
+    ok = registry.forget(role)
+    return {"ok": ok, "role": role,
+            "error": None if ok else f"Role '{role}' was not paired"}
+
+
+@app.tool(
+    description="List all paired devices with their roles and addresses.",
+    annotations={"readOnlyHint": True, "idempotentHint": True},
+)
+def list_devices() -> dict:
+    """Return all paired device assignments."""
+    return registry.all_paired()
 
 
 # ── Entry point ───────────────────────────────────────────────────────────────

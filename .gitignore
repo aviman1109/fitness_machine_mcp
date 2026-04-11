@@ -10,3 +10,4 @@ secrets/
 src/*_backup_*/
 *.tcx
 .venv/
+config/devices.json

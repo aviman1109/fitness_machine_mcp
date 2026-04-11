@@ -1,6 +1,9 @@
 """Upload activity TCX to Garmin Connect via garth."""
 from __future__ import annotations
-import logging, os, time, warnings
+import logging
+import os
+import time
+import warnings
 from pathlib import Path
 
 warnings.filterwarnings("ignore", category=DeprecationWarning)
