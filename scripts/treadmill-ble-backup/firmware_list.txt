@@ -1,0 +1,90 @@
+總用量 1756
+drwxr-xr-x   2 root root   4096  3月 23 21:10 .
+drwxr-xr-x 100 root root  36864  3月 23 21:12 ..
+-rw-r--r--   1 root root  38811  2月 19 23:21 apbtfw10.tlv.zst
+-rw-r--r--   1 root root 117867  2月 19 23:21 apbtfw11.tlv.zst
+-rw-r--r--   1 root root    517  2月 19 23:21 apnv10.bin.zst
+-rw-r--r--   1 root root   2076  2月 19 23:21 apnv11.bin.zst
+-rw-r--r--   1 root root 119366  2月 19 23:21 crbtfw21.tlv.zst
+-rw-r--r--   1 root root  79410  2月 19 23:21 crbtfw32.tlv.zst
+-rw-r--r--   1 root root   2091  2月 19 23:21 crnv21.bin.zst
+-rw-r--r--   1 root root   2332  2月 19 23:21 crnv32.bin.zst
+-rw-r--r--   1 root root   2346  2月 19 23:21 crnv32u.bin.zst
+-rw-r--r--   1 root root 110509  2月 19 23:21 hpbtfw21.tlv.zst
+-rw-r--r--   1 root root   2922  2月 19 23:21 hpnv21.301.zst
+lrwxrwxrwx   1 root root     14  2月 19 23:21 hpnv21.302.zst -> hpnv21.301.zst
+-rw-r--r--   1 root root   2924  2月 19 23:21 hpnv21.309.zst
+-rw-r--r--   1 root root   2795  2月 19 23:21 hpnv21.b10c.zst
+lrwxrwxrwx   1 root root     15  2月 19 23:21 hpnv21.b111.zst -> hpnv21.b10c.zst
+-rw-r--r--   1 root root   3034  2月 19 23:21 hpnv21.b8c.zst
+-rw-r--r--   1 root root   3035  2月 19 23:21 hpnv21.b9f.zst
+lrwxrwxrwx   1 root root     14  2月 19 23:21 hpnv21.ba0.zst -> hpnv21.b9f.zst
+-rw-r--r--   1 root root   3040  2月 19 23:21 hpnv21.ba1.zst
+lrwxrwxrwx   1 root root     14  2月 19 23:21 hpnv21.ba2.zst -> hpnv21.ba1.zst
+-rw-r--r--   1 root root   2910  2月 19 23:21 hpnv21.ba3.zst
+lrwxrwxrwx   1 root root     14  2月 19 23:21 hpnv21.ba4.zst -> hpnv21.ba3.zst
+-rw-r--r--   1 root root   2798  2月 19 23:21 hpnv21.baa.zst
+-rw-r--r--   1 root root   3033  2月 19 23:21 hpnv21.bb8.zst
+-rw-r--r--   1 root root   3029  2月 19 23:21 hpnv21.bin.zst
+-rw-r--r--   1 root root   2916  2月 19 23:21 hpnv21g.301.zst
+lrwxrwxrwx   1 root root     15  2月 19 23:21 hpnv21g.302.zst -> hpnv21g.301.zst
+-rw-r--r--   1 root root   2911  2月 19 23:21 hpnv21g.309.zst
+-rw-r--r--   1 root root   2785  2月 19 23:21 hpnv21g.b10c.zst
+lrwxrwxrwx   1 root root     16  2月 19 23:21 hpnv21g.b111.zst -> hpnv21g.b10c.zst
+-rw-r--r--   1 root root   3024  2月 19 23:21 hpnv21g.b8c.zst
+-rw-r--r--   1 root root   3025  2月 19 23:21 hpnv21g.b9f.zst
+lrwxrwxrwx   1 root root     15  2月 19 23:21 hpnv21g.ba0.zst -> hpnv21g.b9f.zst
+-rw-r--r--   1 root root   3028  2月 19 23:21 hpnv21g.ba1.zst
+lrwxrwxrwx   1 root root     15  2月 19 23:21 hpnv21g.ba2.zst -> hpnv21g.ba1.zst
+-rw-r--r--   1 root root   2897  2月 19 23:21 hpnv21g.ba3.zst
+lrwxrwxrwx   1 root root     15  2月 19 23:21 hpnv21g.ba4.zst -> hpnv21g.ba3.zst
+-rw-r--r--   1 root root   2790  2月 19 23:21 hpnv21g.baa.zst
+-rw-r--r--   1 root root   3024  2月 19 23:21 hpnv21g.bb8.zst
+-rw-r--r--   1 root root   3017  2月 19 23:21 hpnv21g.bin.zst
+-rw-r--r--   1 root root 139642  2月 19 23:21 htbtfw20.tlv.zst
+-rw-r--r--   1 root root   2474  2月 19 23:21 htnv20.bin.zst
+-rw-r--r--   1 root root 111858  2月 19 23:21 msbtfw11.mbn.zst
+-rw-r--r--   1 root root 109956  2月 19 23:21 msbtfw11.tlv.zst
+-rw-r--r--   1 root root   2491  2月 19 23:21 msnv11.b09.zst
+-rw-r--r--   1 root root   2492  2月 19 23:21 msnv11.b0a.zst
+-rw-r--r--   1 root root   2498  2月 19 23:21 msnv11.bin.zst
+-rw-r--r--   1 root root   1092  2月 19 23:21 nvm_00130300.bin.zst
+-rw-r--r--   1 root root   1133  2月 19 23:21 nvm_00130302.bin.zst
+-rw-r--r--   1 root root   1151  2月 19 23:21 nvm_00230302.bin.zst
+-rw-r--r--   1 root root   1172  2月 19 23:21 nvm_00440302.bin.zst
+-rw-r--r--   1 root root   1166  2月 19 23:21 nvm_00440302_eu.bin.zst
+-rw-r--r--   1 root root   1166  2月 19 23:21 nvm_00440302_i2s_eu.bin.zst
+-rw-r--r--   1 root root   1055  2月 19 23:21 nvm_usb_00000200.bin.zst
+lrwxrwxrwx   1 root root     24  2月 19 23:21 nvm_usb_00000201.bin.zst -> nvm_usb_00000200.bin.zst
+-rw-r--r--   1 root root   1058  2月 19 23:21 nvm_usb_00000300.bin.zst
+-rw-r--r--   1 root root   1147  2月 19 23:21 nvm_usb_00000302.bin.zst
+-rw-r--r--   1 root root   1143  2月 19 23:21 nvm_usb_00000302_eu.bin.zst
+-rw-r--r--   1 root root   2616  2月 19 23:21 nvm_usb_00130200_0104.bin.zst
+lrwxrwxrwx   1 root root     29  2月 19 23:21 nvm_usb_00130200_0105.bin.zst -> nvm_usb_00130200_0104.bin.zst
+lrwxrwxrwx   1 root root     24  2月 19 23:21 nvm_usb_00130200_0106.bin.zst -> nvm_usb_00130200.bin.zst
+-rw-r--r--   1 root root   2632  2月 19 23:21 nvm_usb_00130200_0107.bin.zst
+lrwxrwxrwx   1 root root     24  2月 19 23:21 nvm_usb_00130200_0109.bin.zst -> nvm_usb_00130200.bin.zst
+lrwxrwxrwx   1 root root     29  2月 19 23:21 nvm_usb_00130200_0110.bin.zst -> nvm_usb_00130200_0104.bin.zst
+-rw-r--r--   1 root root   2621  2月 19 23:21 nvm_usb_00130200.bin.zst
+lrwxrwxrwx   1 root root     24  2月 19 23:21 nvm_usb_00130201_010a.bin.zst -> nvm_usb_00130201.bin.zst
+lrwxrwxrwx   1 root root     24  2月 19 23:21 nvm_usb_00130201_010b.bin.zst -> nvm_usb_00130201.bin.zst
+-rw-r--r--   1 root root   2789  2月 19 23:21 nvm_usb_00130201_0303.bin.zst
+-rw-r--r--   1 root root   2818  2月 19 23:21 nvm_usb_00130201.bin.zst
+lrwxrwxrwx   1 root root     27  2月 19 23:21 nvm_usb_00130201_gf_010a.bin.zst -> nvm_usb_00130201_gf.bin.zst
+lrwxrwxrwx   1 root root     27  2月 19 23:21 nvm_usb_00130201_gf_010b.bin.zst -> nvm_usb_00130201_gf.bin.zst
+-rw-r--r--   1 root root   2780  2月 19 23:21 nvm_usb_00130201_gf_0303.bin.zst
+-rw-r--r--   1 root root   2812  2月 19 23:21 nvm_usb_00130201_gf.bin.zst
+lrwxrwxrwx   1 root root     24  2月 19 23:21 nvm_usb_00190200_010e.bin.zst -> nvm_usb_00190200.bin.zst
+lrwxrwxrwx   1 root root     24  2月 19 23:21 nvm_usb_00190200_0112.bin.zst -> nvm_usb_00190200.bin.zst
+-rw-r--r--   1 root root   3971  2月 19 23:21 nvm_usb_00190200.bin.zst
+-rw-r--r--   1 root root  45295  2月 19 23:21 rampatch_00130300.bin.zst
+-rw-r--r--   1 root root  22766  2月 19 23:21 rampatch_00130302.bin.zst
+-rw-r--r--   1 root root  23402  2月 19 23:21 rampatch_00230302.bin.zst
+-rw-r--r--   1 root root  48016  2月 19 23:21 rampatch_00440302.bin.zst
+-rw-r--r--   1 root root  37567  2月 19 23:21 rampatch_usb_00000200.bin.zst
+lrwxrwxrwx   1 root root     29  2月 19 23:21 rampatch_usb_00000201.bin.zst -> rampatch_usb_00000200.bin.zst
+-rw-r--r--   1 root root  45102  2月 19 23:21 rampatch_usb_00000300.bin.zst
+-rw-r--r--   1 root root  48328  2月 19 23:21 rampatch_usb_00000302.bin.zst
+-rw-r--r--   1 root root 137186  2月 19 23:21 rampatch_usb_00130200.bin.zst
+-rw-r--r--   1 root root 113901  2月 19 23:21 rampatch_usb_00130201.bin.zst
+-rw-r--r--   1 root root 173066  2月 19 23:21 rampatch_usb_00190200.bin.zst

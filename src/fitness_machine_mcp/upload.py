@@ -19,6 +19,62 @@ TOKEN_PATH = Path(os.environ.get(
 _POLL_RETRIES    = 10   # how many times to check for the new activity
 _POLL_INTERVAL_S = 2    # seconds between checks
 
+# Cached primary Garmin device info — populated once on first upload.
+# Used in TCX Creator so Garmin treats the activity as coming from the user's
+# real watch, which enables Training Load / Physio TrueUp on the watch.
+_cached_device: dict | None = None
+
+
+def get_primary_garmin_device() -> dict:
+    """Return the user's primary Garmin device info (product_id, unit_id, name).
+
+    Two-step lookup (the old /device-service/deviceservice/devices endpoint is gone):
+      1. Pull deviceId from a recent activity.
+      2. Fetch device details via /device-service/deviceservice/device-info/{deviceId}.
+
+    Falls back to an empty dict on failure so callers handle gracefully.
+
+    Example return value:
+        {"product_id": 3464969397, "unit_id": 3464969397, "name": "Descent Mk3 43mm"}
+    """
+    global _cached_device
+    if _cached_device is not None:
+        return _cached_device
+
+    client = _get_client()
+    try:
+        # Step 1: grab device IDs seen in recent activities (primary tracker appears first)
+        acts = client.connectapi(
+            "/activitylist-service/activities/search/activities",
+            params={"limit": 10, "start": 0},
+        ) or []
+        device_ids = [a["deviceId"] for a in acts if a.get("deviceId")]
+        if not device_ids:
+            log.warning("No device ID found in recent activities — Training Load will not update on watch")
+            _cached_device = {}
+            return _cached_device
+
+        # Step 2: fetch device details for the first (most recent) device
+        device_id = device_ids[0]
+        info = client.connectapi(f"/device-service/deviceservice/device-info/{device_id}")
+        base = info.get("baseDeviceDTO", {})
+        uid  = base.get("unitId") or info.get("unitId") or device_id
+        name = (base.get("displayName") or info.get("productDisplayName") or
+                info.get("displayName") or str(device_id))
+
+        # product_id: Garmin's new API doesn't expose a numeric productId, so we
+        # use unitId as a stand-in — the UnitId is the field Garmin actually uses
+        # to match an upload to a watch for Physio TrueUp Training Load sync.
+        _cached_device = {"product_id": int(uid), "unit_id": int(uid), "name": str(name)}
+        log.info("Primary Garmin device: %s (unit_id=%s)", name, uid)
+        return _cached_device
+
+    except Exception as e:
+        log.warning("Could not fetch Garmin device info: %s", e)
+
+    _cached_device = {}
+    return _cached_device
+
 
 def _get_client() -> garth.Client:
     garth.resume(str(TOKEN_PATH))
@@ -78,6 +134,36 @@ def upload_activity(tcx_path: str) -> int | None:
 
     log.warning("Could not retrieve activity ID after %d polls", _POLL_RETRIES)
     return None
+
+
+def set_training_effect(activity_id: int, aerobic_te: float, anaerobic_te: float) -> bool:
+    """Inject Training Effect into an uploaded Garmin Connect activity.
+
+    TCX uploads bypass on-device Training Effect calculation, so Garmin Connect
+    shows the activity with no TE and it doesn't contribute to Training Load on
+    the watch.  This function writes the pre-calculated TE values back via the
+    activity-service PUT endpoint so training load is correctly accounted for.
+
+    Garmin TE scale: 0.0–5.0 (aerobic), 0.0–3.0 (anaerobic).
+    Values are rounded to 1 decimal place.
+    """
+    client = _get_client()
+    try:
+        client.connectapi(
+            f"/activity-service/activity/{activity_id}",
+            method="PUT",
+            json={
+                "activityId":            activity_id,
+                "aerobicTrainingEffect": round(aerobic_te,   1),
+                "anaerobicTrainingEffect": round(anaerobic_te, 1),
+            },
+        )
+        log.info("Activity %s — aerobic TE %.1f  anaerobic TE %.1f",
+                 activity_id, aerobic_te, anaerobic_te)
+        return True
+    except Exception as e:
+        log.error("Failed to set training effect for %s: %s", activity_id, e)
+        return False
 
 
 def set_activity_type(activity_id: int, type_key: str) -> bool:

@@ -1,0 +1,14 @@
+{
+  "name": "Brick Run 30min — IF驗證後",
+  "description": "下車直接上跑步機。前3min過渡，之後拉到目標配速，最後衝刺。",
+  "sport": "Running",
+  "incline_pct": 1.0,
+  "steps": [
+    {"name": "磚腿過渡", "duration_secs": 180, "speed_kmh": 10.0},
+    {"name": "Build",    "duration_secs": 300, "speed_kmh": 10.5},
+    {"name": "Race Pace","duration_secs": 720, "speed_kmh": 10.9},
+    {"name": "Push",     "duration_secs": 420, "speed_kmh": 11.2},
+    {"name": "Sprint",   "duration_secs": 180, "speed_kmh": 11.7},
+    {"name": "緩和",     "duration_secs": 120, "speed_kmh": 7.0}
+  ]
+}

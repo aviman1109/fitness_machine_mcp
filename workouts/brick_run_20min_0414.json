@@ -1,0 +1,23 @@
+{
+  "name": "Brick 跑步機 20min（4/14）",
+  "description": "Brick 後段。疲勞腿驗證：前 3min 讓腿醒過來，之後目標 5:30/km（10.9 km/h）。速度手動調，教練看 HR 跟配速。",
+  "sport": "running",
+  "steps": [
+    {
+      "name": "腿醒過來",
+      "duration_secs": 180,
+      "speed_kmh": 9.0
+    },
+    {
+      "name": "疲勞腿驗證 @5:30/km",
+      "duration_secs": 900,
+      "speed_kmh": 10.9
+    },
+    {
+      "name": "緩和",
+      "duration_secs": 120,
+      "speed_kmh": 9.0
+    }
+  ],
+  "incline_pct": 1.0
+}

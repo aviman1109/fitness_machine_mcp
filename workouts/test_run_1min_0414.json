@@ -1,0 +1,13 @@
+{
+  "name": "跑步機 1min 測試（4/14）",
+  "description": "Brick 前裝置測試：確認跑步機 BLE、HRM 連線，速度/距離記錄正常",
+  "sport": "running",
+  "steps": [
+    {
+      "name": "測試",
+      "duration_secs": 60,
+      "speed_kmh": 8.0
+    }
+  ],
+  "incline_pct": 1.0
+}

@@ -1,0 +1,5 @@
+bleak>=0.22.0
+fastapi>=0.110.0
+uvicorn>=0.30.0
+garminconnect==0.2.38
+garth>=0.5.17,<0.6.0

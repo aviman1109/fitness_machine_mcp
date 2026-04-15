@@ -1,0 +1,11 @@
+{
+  "name": "Z2 輕鬆跑 45min",
+  "description": "恢復跑。HR 130-145，不追配速。",
+  "sport": "Running",
+  "incline_pct": 1.0,
+  "steps": [
+    {"name": "暖身", "duration_secs": 300, "speed_kmh": 9.0},
+    {"name": "Z2",   "duration_secs": 2100, "speed_kmh": 10.0},
+    {"name": "緩和", "duration_secs": 300, "speed_kmh": 7.5}
+  ]
+}

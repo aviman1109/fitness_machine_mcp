@@ -1,12 +1,97 @@
-"""Generate TCX (Training Center XML) for a treadmill session."""
+"""Generate TCX (Training Center XML) and training-effect calculation."""
 from __future__ import annotations
+import os
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from fitness_machine_mcp.engine import DataPoint
 
+# Athlete lactate-threshold HR used for zone boundaries and TE calculation.
+# Override via ATHLETE_LTHR env var if needed.
+_LTHR = int(os.environ.get("ATHLETE_LTHR", "173"))
 
-def build_tcx(plan: dict, data: list["DataPoint"], start_time: datetime) -> bytes:
+
+def calculate_training_effect(
+    data: "list[DataPoint]",
+    lthr: int = _LTHR,
+) -> tuple[float, float]:
+    """Estimate Garmin-style aerobic and anaerobic Training Effect from HR data.
+
+    Uses a zone-weighted TRIMP approach (time × zone multiplier) then maps the
+    score to Garmin's 0–5 / 0–3 TE scales.
+
+    Zone boundaries (% LTHR, matching Garmin's default LTHR-based zones):
+      Z1 < 69 %    Z2 69–83 %    Z3 84–94 %    Z4 95–105 %    Z5 > 105 %
+
+    Aerobic TE  (0–5): driven by total TRIMP, capped at 5.
+    Anaerobic TE (0–3): driven by time in Z4+, capped at 3.
+    """
+    if not data:
+        return 0.0, 0.0
+
+    z_bounds = [
+        (0,               int(lthr * 0.69)),   # Z1
+        (int(lthr * 0.69), int(lthr * 0.84)),  # Z2
+        (int(lthr * 0.84), int(lthr * 0.95)),  # Z3
+        (int(lthr * 0.95), int(lthr * 1.06)),  # Z4
+        (int(lthr * 1.06), 999),               # Z5
+    ]
+    z_multipliers = [1, 2, 3, 4, 5]       # aerobic contribution per zone
+    z_anaerobic   = [0, 0, 0, 1.5, 3.0]  # anaerobic contribution per zone
+
+    trimp_aerobic  = 0.0
+    trimp_anaerobic = 0.0
+
+    for pt in data:
+        hr = pt.hr_bpm
+        if hr <= 0:
+            continue
+        for z, (lo, hi) in enumerate(z_bounds):
+            if lo <= hr < hi:
+                trimp_aerobic   += z_multipliers[z]   / 60   # normalise to minutes
+                trimp_anaerobic += z_anaerobic[z]      / 60
+                break
+
+    # Map TRIMP → TE (empirical, tuned to match Garmin's typical outputs)
+    # Aerobic: 0-5 scale; breakpoints at 50/100/175/280 TRIMP-minutes
+    def _trimp_to_aerobic_te(t: float) -> float:
+        if t <  50:  return round(min(1.9, 1.0 + t / 50),        1)
+        if t < 100:  return round(2.0 + (t -  50) / 50,          1)
+        if t < 175:  return round(3.0 + (t - 100) / 75,          1)
+        if t < 280:  return round(4.0 + (t - 175) / 105,         1)
+        return 5.0
+
+    # Anaerobic: 0-3 scale; breakpoints at 10/30/60 TRIMP-minutes
+    def _trimp_to_anaerobic_te(t: float) -> float:
+        if t <  10: return round(min(0.9,  t / 10),               1)
+        if t <  30: return round(1.0 + (t -  10) / 20,            1)
+        if t <  60: return round(2.0 + (t -  30) / 30,            1)
+        return 3.0
+
+    aerobic_te   = _trimp_to_aerobic_te(trimp_aerobic)
+    anaerobic_te = _trimp_to_anaerobic_te(trimp_anaerobic)
+    return min(5.0, aerobic_te), min(3.0, anaerobic_te)
+
+
+def build_tcx(
+    plan: dict,
+    data: list["DataPoint"],
+    start_time: datetime,
+    garmin_device: dict | None = None,
+) -> bytes:
+    """Build TCX bytes for the completed workout.
+
+    Args:
+        plan: Workout plan dict (keys: sport, name, …).
+        data: List of DataPoint objects recorded during the workout.
+        start_time: UTC datetime of workout start.
+        garmin_device: Optional dict with keys product_id, unit_id, name from
+            the user's real Garmin watch.  When provided the TCX <Creator> is
+            set to the real device so Garmin Connect counts the activity toward
+            Training Load / Physio TrueUp on the watch.  When None or empty the
+            fitness-machine device name is used (Training Load will NOT update
+            on the watch in this case).
+    """
     sport_raw = plan.get("sport", "running").lower()
     # TCX Sport attribute values: "Running" or "Biking"
     sport_tcx = "Biking" if sport_raw == "cycling" else "Running"
@@ -106,9 +191,9 @@ def build_tcx(plan: dict, data: list["DataPoint"], start_time: datetime) -> byte
         </Track>
       </Lap>
       <Creator xsi:type="Device_t">
-        <Name>{"eHuntSun T-SoX Trainer" if sport_raw == "cycling" else "ADIDAS 1380 Treadmill"}</Name>
-        <UnitId>{"2250" if sport_raw == "cycling" else "1380"}</UnitId>
-        <ProductID>{"2250" if sport_raw == "cycling" else "1380"}</ProductID>
+        <Name>{garmin_device["name"] if garmin_device else ("eHuntSun T-SoX Trainer" if sport_raw == "cycling" else "ADIDAS 1380 Treadmill")}</Name>
+        <UnitId>{garmin_device["unit_id"] if garmin_device else ("2250" if sport_raw == "cycling" else "1380")}</UnitId>
+        <ProductID>{garmin_device["product_id"] if garmin_device else ("2250" if sport_raw == "cycling" else "1380")}</ProductID>
         <Version><VersionMajor>1</VersionMajor><VersionMinor>0</VersionMinor></Version>
       </Creator>
     </Activity>

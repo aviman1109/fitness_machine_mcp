@@ -25,6 +25,17 @@ WORKOUTS_DIR = Path(os.environ.get(
 # How long to wait for the rider to start pedaling before aborting (seconds)
 _PEDAL_WAIT_TIMEOUT_SECS = 120
 
+# Minimum recorded data points before an activity is worth uploading to Garmin.
+# At 1 point/sec this equals 5 minutes — anything shorter is a false start or
+# connection blip and should be silently discarded rather than cluttering
+# Garmin Connect and breaking training-load calculations.
+# Evidence: April 5 false starts were 213s and 354s; April 11 were 96s and 286s.
+_MIN_UPLOAD_DATAPOINTS = 300
+
+# Minimum average HR across all data points. Sessions where HR never connected
+# (avg HR ≈ 0) are almost certainly false starts even if they ran for a while.
+_MIN_AVG_HR_BPM = 60
+
 
 @dataclass
 class DataPoint:
@@ -282,13 +293,28 @@ class WorkoutEngine:
             self._ant.stop()
             self._ant = None
 
-        # Upload whatever data was collected, even if workout was stopped early
+        # Upload whatever data was collected, if it meets the minimum threshold.
+        # Sessions shorter than _MIN_UPLOAD_DATAPOINTS or with no HR signal are
+        # connection blips or false starts — discard silently to avoid polluting
+        # Garmin Connect and breaking training-load calculations.
         if self._data and self._current_plan:
-            self._state.status = "uploading"
-            try:
-                await self._upload(self._current_plan)
-            except Exception as e:
-                log.warning("Upload after early stop failed: %s", e)
+            avg_hr = sum(d.hr_bpm for d in self._data) / len(self._data)
+            if len(self._data) < _MIN_UPLOAD_DATAPOINTS:
+                log.warning(
+                    "Discarding short session (%d data points < %d minimum) — not uploading",
+                    len(self._data), _MIN_UPLOAD_DATAPOINTS,
+                )
+            elif avg_hr < _MIN_AVG_HR_BPM:
+                log.warning(
+                    "Discarding no-HR session (avg HR %.1f bpm < %d minimum) — not uploading",
+                    avg_hr, _MIN_AVG_HR_BPM,
+                )
+            else:
+                self._state.status = "uploading"
+                try:
+                    await self._upload(self._current_plan)
+                except Exception as e:
+                    log.warning("Upload after early stop failed: %s", e)
 
         self._state.status = "idle"
 
@@ -313,13 +339,20 @@ class WorkoutEngine:
         self._current_plan = plan
         sport = plan.get("sport", "running").lower()
         steps = plan["steps"]
-        self._state.workout_name = plan["name"]
-        self._state.sport        = sport
-        self._state.step_total   = len(steps)
-        self._state.status       = "connecting"
-        self._state.error        = ""
+        # Atomic state reset — fresh session must not inherit previous session's
+        # residuals (garmin_activity_id, distance_m, hr_bpm, elapsed_sec, etc.),
+        # or monitoring cron will misreport old data as new session.
+        self._state = WorkoutState(
+            status="connecting",
+            workout_name=plan["name"],
+            sport=sport,
+            step_total=len(steps),
+        )
         self._data = []
         self._session_distance_m = 0.0
+        self._latest = None
+        self._latest_ts = 0.0
+        self._start_time = None
 
         if sport == "cycling":
             await self._run_cycling(plan)
@@ -460,7 +493,13 @@ class WorkoutEngine:
                 self._ant = None
 
         if self._data and self._state.status == "done":
-            await self._upload(plan)
+            avg_hr = sum(d.hr_bpm for d in self._data) / len(self._data)
+            if len(self._data) < _MIN_UPLOAD_DATAPOINTS:
+                log.warning("Cycling session too short (%d pts) — skipping upload", len(self._data))
+            elif avg_hr < _MIN_AVG_HR_BPM:
+                log.warning("Cycling session has no HR signal (avg %.1f bpm) — skipping upload", avg_hr)
+            else:
+                await self._upload(plan)
 
     async def _run_treadmill(self, plan: dict):
         """Record a treadmill running workout (monitor-only, no machine control).
@@ -551,16 +590,33 @@ class WorkoutEngine:
                 await self._ble.disconnect()
 
         if self._data and self._state.status == "done":
-            await self._upload(plan)
+            avg_hr = sum(d.hr_bpm for d in self._data) / len(self._data)
+            if len(self._data) < _MIN_UPLOAD_DATAPOINTS:
+                log.warning("Treadmill session too short (%d pts) — skipping upload", len(self._data))
+            elif avg_hr < _MIN_AVG_HR_BPM:
+                log.warning("Treadmill session has no HR signal (avg %.1f bpm) — skipping upload", avg_hr)
+            else:
+                await self._upload(plan)
 
     async def _upload(self, plan: dict):
         try:
-            from fitness_machine_mcp.tcx import build_tcx
-            from fitness_machine_mcp.upload import upload_activity, set_activity_type
+            from fitness_machine_mcp.tcx import build_tcx, calculate_training_effect
+            from fitness_machine_mcp.upload import (
+                upload_activity, set_activity_type, set_training_effect,
+                get_primary_garmin_device,
+            )
 
-            sport = plan.get("sport", "running").lower()
+            sport    = plan.get("sport", "running").lower()
             tcx_path = Path(f"/tmp/fitness_{sport}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.tcx")
-            tcx_bytes = build_tcx(plan, self._data, self._start_time)
+
+            # Fetch real Garmin device info so TCX Creator matches the user's watch.
+            # This is required for Garmin's Physio TrueUp to count the activity
+            # toward Training Load on the watch side.
+            garmin_device = await asyncio.get_event_loop().run_in_executor(
+                None, get_primary_garmin_device
+            ) or None
+
+            tcx_bytes = build_tcx(plan, self._data, self._start_time, garmin_device=garmin_device)
             tcx_path.write_bytes(tcx_bytes)
             log.info("TCX written: %s (%d bytes)", tcx_path, len(tcx_bytes))
 
@@ -571,11 +627,22 @@ class WorkoutEngine:
             log.info("Uploaded to Garmin. Activity ID: %s", activity_id)
 
             if activity_id:
-                # Map sport to Garmin activity type key
+                loop = asyncio.get_event_loop()
+
+                # Set sport type
                 type_key = "treadmill_running" if sport == "running" else "indoor_cycling"
-                await asyncio.get_event_loop().run_in_executor(
-                    None, set_activity_type, activity_id, type_key
+                await loop.run_in_executor(None, set_activity_type, activity_id, type_key)
+
+                # Inject Training Effect so the activity contributes to Training Load.
+                # TCX uploads bypass on-device TE calculation; without this the watch
+                # never sees the workout in its training status.
+                aerobic_te, anaerobic_te = calculate_training_effect(self._data)
+                log.info("Calculated TE — aerobic: %.1f  anaerobic: %.1f",
+                         aerobic_te, anaerobic_te)
+                await loop.run_in_executor(
+                    None, set_training_effect, activity_id, aerobic_te, anaerobic_te
                 )
+
         except Exception as e:
             log.error("Upload failed: %s", e)
             self._state.error = f"Upload failed: {e}"

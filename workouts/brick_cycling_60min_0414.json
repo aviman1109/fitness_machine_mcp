@@ -1,0 +1,22 @@
+{
+  "name": "Brick 訓練台 60min Z2（4/14）",
+  "description": "Brick 前段。Z2 鎖 150W，HR 守住 155 以下。騎完直接換跑步機，不休息。",
+  "sport": "cycling",
+  "steps": [
+    {
+      "name": "暖身",
+      "duration_secs": 600,
+      "power_w": 130
+    },
+    {
+      "name": "Z2 主課 @150W",
+      "duration_secs": 2400,
+      "power_w": 150
+    },
+    {
+      "name": "緩和",
+      "duration_secs": 600,
+      "power_w": 130
+    }
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "name": "訓練台 1min 測試（4/14）",
+  "description": "Brick 前裝置測試：確認 BLE、ERG、功率計、HRM 連線正常",
+  "sport": "cycling",
+  "steps": [
+    {
+      "name": "測試",
+      "duration_secs": 60,
+      "power_w": 120
+    }
+  ]
+}

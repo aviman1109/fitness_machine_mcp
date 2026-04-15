@@ -33,14 +33,18 @@ SERVER_INSTRUCTIONS = """
 This MCP server controls BLE FTMS fitness machines (treadmill + cycling trainer) and uploads completed workouts to Garmin Connect.
 
 ## Running (treadmill)
-The treadmill does NOT support speed control — start_workout only opens a timed session.
-Training structure (intervals, pace targets, coaching cues) is managed by the agent in the conversation session, NOT stored in workout steps.
-Use start_workout to begin recording, get_status to monitor HR/speed/distance, stop_workout when done.
-Do NOT use create_workout for running — it is unnecessary and misleading.
+The treadmill does NOT support speed control from software — the user sets speed manually on the machine.
+create_workout (sport=running) stores a session plan: step names, durations, and reference speed/incline for coaching.
+start_workout connects and records data for the planned duration. Steps are for timing and coaching reference only.
+Use get_status to monitor HR/speed/distance in real time.
 
 ## Cycling (ERG trainer)
-create_workout (sport=cycling, steps with power_w) defines the ERG power targets.
-start_workout executes the ERG plan automatically. set_target_power for live overrides.
+create_workout (sport=cycling, steps with power_w) defines ERG power targets executed automatically.
+start_workout runs the ERG plan step by step. set_target_power for live overrides.
+
+## Workout management
+create_workout and delete_workout work at any time (except deleting the currently running workout).
+list_workouts and get_workout are always available.
 
 ## Both sports
 After completion the activity is auto-uploaded to Garmin Connect.
@@ -64,8 +68,10 @@ app.settings.streamable_http_path = os.environ.get("MCP_PATH", "/mcp")
 class WorkoutStep(BaseModel):
     name: str
     duration_secs: int
-    speed_kmh: Optional[float] = None   # running steps
-    power_w: Optional[int] = None       # cycling ERG steps
+    # Running: coaching reference only — NOT sent to the machine (user adjusts manually)
+    speed_kmh: Optional[float] = None
+    # Cycling ERG: actual target power sent to the trainer via BLE FTMS
+    power_w: Optional[int] = None
 
 
 # ── MCP Tools ─────────────────────────────────────────────────────────────────
@@ -91,13 +97,17 @@ def get_workout(workout_id: str) -> dict:
 
 @app.tool(
     description=(
-        "Create or update a cycling ERG workout plan. "
-        "For cycling ERG steps: name, duration_secs, power_w. "
-        "sport must be 'cycling'. "
-        "DO NOT use this for running — the treadmill does not support speed control. "
-        "Running sessions are started with start_workout using a pre-existing run session ID; "
-        "training structure is managed by the agent in the conversation, not stored here. "
-        "Cycling example: [{\"name\":\"暖身\",\"duration_secs\":1200,\"power_w\":140}]"
+        "Create or update a workout plan. Supports both running and cycling.\n"
+        "\n"
+        "sport='cycling': power_w per step is the ERG target — sent to the trainer automatically.\n"
+        "\n"
+        "sport='running': TREADMILL HARDWARE LIMITATION — speed and incline CANNOT be controlled "
+        "by software. The user must adjust speed/incline manually on the machine. "
+        "speed_kmh and incline_pct in steps are coaching reference values only (shown to coach, "
+        "never sent to the machine). Steps are used for timing and naming only.\n"
+        "\n"
+        "Cycling example: [{\"name\":\"暖身\",\"duration_secs\":1200,\"power_w\":140}]\n"
+        "Running example: [{\"name\":\"Z2 10min\",\"duration_secs\":600,\"speed_kmh\":10.0}]"
     ),
 )
 def create_workout(
@@ -106,44 +116,57 @@ def create_workout(
     steps: list[WorkoutStep],
     description: str = "",
     sport: str = "cycling",
+    incline_pct: float = 0.0,
 ) -> dict:
-    """Create or overwrite a cycling ERG workout plan. workout_id becomes the filename (no spaces)."""
+    """Create or overwrite a workout plan. workout_id becomes the filename (no spaces)."""
     if not workout_id or not workout_id.replace("_", "").replace("-", "").isalnum():
         return {"ok": False, "error": "workout_id must be alphanumeric with _ or -"}
     if not steps:
         return {"ok": False, "error": "steps cannot be empty"}
     sport_lower = sport.lower()
-    if sport_lower != "cycling":
-        return {"ok": False, "error": "create_workout is for cycling ERG only. For running, use start_workout with an existing session ID — training content is managed by the agent in session."}
+    if sport_lower not in ("cycling", "running"):
+        return {"ok": False, "error": "sport must be 'cycling' or 'running'"}
     for s in steps:
         if s.duration_secs <= 0 or s.duration_secs > 14400:
             return {"ok": False, "error": f"Step '{s.name}': duration_secs must be 1–14400"}
-        if s.power_w is None:
-            return {"ok": False, "error": f"Cycling step '{s.name}' missing power_w"}
-        if not (0 <= s.power_w <= 2000):
-            return {"ok": False, "error": f"Cycling step '{s.name}': power_w must be 0–2000 W"}
-    plan = {
+        if sport_lower == "cycling":
+            if s.power_w is None:
+                return {"ok": False, "error": f"Cycling step '{s.name}' missing power_w"}
+            if not (0 <= s.power_w <= 2000):
+                return {"ok": False, "error": f"Cycling step '{s.name}': power_w must be 0–2000 W"}
+    plan: dict = {
         "name": name,
         "description": description,
-        "sport": "cycling",
+        "sport": sport_lower,
         "steps": [s.model_dump(exclude_none=True) for s in steps],
     }
+    if sport_lower == "running" and incline_pct != 0.0:
+        plan["incline_pct"] = incline_pct
     engine.save_workout(workout_id, plan)
     total = sum(s.duration_secs for s in steps)
-    return {"ok": True, "workout_id": workout_id, "sport": "cycling",
+    return {"ok": True, "workout_id": workout_id, "sport": sport_lower,
             "steps": len(steps), "total_secs": total}
 
 
-@app.tool(description="Delete a workout plan by ID. Cannot delete while workout is running.")
+@app.tool(description="Delete a workout plan by ID. Cannot delete the currently running workout.")
 def delete_workout(workout_id: str) -> dict:
-    if engine.state.status in ("running", "connecting") and engine.state.workout_name:
-        return {"ok": False, "error": "Cannot delete while a workout is active"}
+    plan = engine.get_workout(workout_id)
+    if plan is None:
+        return {"ok": False, "error": f"Workout not found: {workout_id}"}
+    if (engine.state.status in ("running", "connecting", "ready")
+            and engine.state.workout_name == plan.get("name")):
+        return {"ok": False, "error": f"Cannot delete '{workout_id}' — it is currently running"}
     deleted = engine.delete_workout(workout_id)
     return {"ok": deleted, "deleted": workout_id if deleted else None,
             "error": None if deleted else f"Workout not found: {workout_id}"}
 
 
-@app.tool(description="Start a workout by ID. For treadmill: insert safety key first. For cycling: just start pedaling.")
+@app.tool(description=(
+    "Start a workout by ID.\n"
+    "Running: insert safety key and start the belt manually — this MCP only records data, "
+    "it does NOT control treadmill speed or incline.\n"
+    "Cycling: start pedaling — ERG power targets from the plan are sent to the trainer automatically."
+))
 async def start_workout(workout_id: str) -> dict:
     """Start a workout. Returns status dict."""
     state = engine.state
@@ -209,10 +232,12 @@ def get_status() -> dict:
 async def stop_workout() -> dict:
     await engine.emergency_stop()
     garmin_id = engine.state.garmin_activity_id
+    err = engine.state.error or None
     return {
         "stopped": True,
         "garmin_activity_id": garmin_id,
         "uploaded": garmin_id is not None,
+        "error": err,
     }
 
 
